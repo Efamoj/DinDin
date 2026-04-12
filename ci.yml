@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dindin
+          POSTGRES_PASSWORD: senha_forte
+          POSTGRES_DB: dindin_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npx prisma generate
+
+      - run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://dindin:senha_forte@localhost:5432/dindin_test
+
+      - run: npm test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://dindin:senha_forte@localhost:5432/dindin_test
+          REDIS_URL: redis://localhost:6379
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          WA_SESSION_ENCRYPTION_KEY: 00000000000000000000000000000000
+          PIX_KEY: test@pix.com
+
+      - run: npm run lint

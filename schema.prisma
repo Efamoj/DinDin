@@ -1,0 +1,211 @@
+// prisma/schema.prisma
+// Modelo de dados do DinDin
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// USUÁRIO
+// ─────────────────────────────────────────────
+model User {
+  id          String   @id @default(cuid())
+  phone       String   @unique          // número WA sanitizado: +5511999999999
+  displayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relacionamentos
+  financialProfile FinancialProfile?
+  expenses         Expense[]
+  goals            Goal[]
+  conversations    Conversation[]
+  subscription     Subscription?
+  flowState        FlowState?
+  alerts           Alert[]
+
+  @@index([phone])
+}
+
+// ─────────────────────────────────────────────
+// PERFIL FINANCEIRO
+// ─────────────────────────────────────────────
+model FinancialProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  monthlyBudget        Float?   // quanto o usuário tem para gastar no mês
+  currentMonthSpent    Float    @default(0)
+  savingsGoalMonthly   Float?   // meta de economia mensal
+  riskLevel            RiskLevel @default(MEDIUM)
+  lastStatementHash    String?  // hash SHA-256 do último extrato processado (evita reprocessamento)
+  updatedAt            DateTime @updatedAt
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ─────────────────────────────────────────────
+// GASTOS
+// ─────────────────────────────────────────────
+model Expense {
+  id          String          @id @default(cuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  amount      Float
+  description String
+  category    ExpenseCategory @default(OTHER)
+  isImpulsive Boolean         @default(false)
+  source      ExpenseSource   @default(MANUAL)  // MANUAL | AUDIO | STATEMENT
+  rawInput    String?         // texto bruto enviado pelo usuário (mascarado em logs)
+  occurredAt  DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+
+  @@index([userId, occurredAt])
+}
+
+enum ExpenseCategory {
+  FOOD
+  TRANSPORT
+  SHOPPING
+  HEALTH
+  ENTERTAINMENT
+  EDUCATION
+  HOUSING
+  IMPULSE
+  OTHER
+}
+
+enum ExpenseSource {
+  MANUAL
+  AUDIO
+  STATEMENT
+}
+
+// ─────────────────────────────────────────────
+// METAS
+// ─────────────────────────────────────────────
+model Goal {
+  id           String     @id @default(cuid())
+  userId       String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title        String
+  targetAmount Float
+  savedAmount  Float      @default(0)
+  deadline     DateTime?
+  status       GoalStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([userId, status])
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// CONVERSAS (histórico para contexto da IA)
+// ─────────────────────────────────────────────
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role      MessageRole
+  content   String      // texto da mensagem (PII removido em logs, mas armazenado encriptado)
+  createdAt DateTime    @default(now())
+
+  @@index([userId, createdAt])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+}
+
+// ─────────────────────────────────────────────
+// ESTADO DO FLUXO (máquina de estados WA)
+// ─────────────────────────────────────────────
+model FlowState {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  currentFlow String   // ex: "ONBOARDING" | "DAILY_LOG" | "PLAN_RENEWAL"
+  step        String   // passo atual dentro do fluxo
+  context     Json     @default("{}")  // dados temporários do fluxo
+  updatedAt   DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// ASSINATURAS
+// ─────────────────────────────────────────────
+model Subscription {
+  id        String             @id @default(cuid())
+  userId    String             @unique
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan      PlanType
+  status    SubscriptionStatus @default(TRIAL)
+  startedAt DateTime           @default(now())
+  expiresAt DateTime
+  pixTxId   String?            // ID da transação PIX
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@index([status, expiresAt])
+}
+
+enum PlanType {
+  TRIAL
+  INTELLIGENT   // R$ 15/mês
+  QUARTERLY     // R$ 40/trimestre
+  PREMIUM       // Fluxo 8 — visão avançada
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// ALERTAS PROATIVOS
+// ─────────────────────────────────────────────
+model Alert {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type      AlertType
+  message   String
+  sentAt    DateTime  @default(now())
+  readAt    DateTime?
+
+  @@index([userId, sentAt])
+}
+
+enum AlertType {
+  DAILY_LIMIT_WARNING   // 80% do limite diário
+  MONTHLY_LIMIT_WARNING
+  IMPULSE_DETECTED
+  GOAL_PROGRESS
+  PLAN_EXPIRING
+  FRIDAY_NUDGE
+}
