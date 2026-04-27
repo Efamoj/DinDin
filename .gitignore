@@ -1,0 +1,42 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Variáveis de ambiente (NUNCA commitar)
+.env
+.env.local
+.env.*.local
+
+# Sessão do WhatsApp (contém credenciais — NUNCA commitar)
+sessions/
+auth_info_baileys/
+
+# Logs
+*.log
+logs/
+
+# Arquivos temporários de áudio/PDF
+tmp/
+temp/
+
+# Prisma — cliente gerado (pode ser regenerado com npm run db:generate)
+# Mantenha o schema.prisma, mas ignore o cliente compilado
+# node_modules/@prisma/client já é coberto acima
+
+# Cache
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage de testes
+coverage/
